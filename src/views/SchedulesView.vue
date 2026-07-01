@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref, computed } from 'vue'
+import { onMounted, ref, computed, watch } from 'vue'
 import { useLogisticsStore } from '@/stores/logistics'
 import type { TruckSchedule, Bag } from '@/types'
 
@@ -8,6 +8,13 @@ const logisticsStore = useLogisticsStore()
 // State
 const showCreateModal = ref(false)
 const selectedSchedule = ref<TruckSchedule | null>(null)
+
+watch(
+  () => logisticsStore.activeRegionId,
+  () => {
+    selectedSchedule.value = null
+  }
+)
 
 // Create Schedule Form
 const truckId = ref('')
@@ -119,8 +126,9 @@ async function handleDepart() {
   
   departSubmitting.value = true
   try {
-    const updated = await logisticsStore.departSchedule(selectedSchedule.value.id)
-    selectedSchedule.value = updated
+    await logisticsStore.departSchedule(selectedSchedule.value.id)
+    const updated = logisticsStore.schedules.find(s => s.id === selectedSchedule.value?.id)
+    if (updated) selectedSchedule.value = updated
     alert('Truck dispatched successfully! Webhooks sent to track database.')
   } catch (err: any) {
     alert(err.response?.data?.error || 'Failed to dispatch schedule')
@@ -129,9 +137,31 @@ async function handleDepart() {
   }
 }
 
+const arriveSubmitting = ref(false)
+
+async function handleArrive() {
+  if (!selectedSchedule.value) return
+  if (!confirm('Are you sure you want to authorize arrival for this vehicle? All loaded bags will be marked as Delivered and packages will be set to Arrived status at their destination hubs.')) return
+
+  arriveSubmitting.value = true
+  try {
+    await logisticsStore.updateSchedule(selectedSchedule.value.id, { status: 'arrived' })
+    
+    const updated = logisticsStore.schedules.find(s => s.id === selectedSchedule.value?.id)
+    if (updated) selectedSchedule.value = updated
+
+    alert('Vehicle arrival authorized successfully! Cargo manifest unloaded and webhooks triggered.')
+  } catch (err: any) {
+    alert(err.response?.data?.error || 'Failed to authorize vehicle arrival')
+  } finally {
+    arriveSubmitting.value = false
+  }
+}
+
 function getStatusBadgeClass(status: string) {
   switch (status) {
     case 'scheduled': return 'badge badge--warning'
+    case 'departed':
     case 'in_transit': return 'badge badge--info'
     case 'arrived': return 'badge badge--success'
     default: return 'badge badge--danger'
@@ -192,7 +222,7 @@ function formatTime(isoStr: string) {
               >
                 <td class="font-mono text-accent font-semibold">🚛 {{ sched.truck?.truckCode || '??' }}</td>
                 <td>{{ sched.routeDescription }}</td>
-                <td>{{ formatTime(sched.departureTime) }}</td>
+                <td>{{ formatTime(sched.scheduledDeparture) }}</td>
                 <td>{{ formatTime(sched.estimatedArrivalTime) }}</td>
                 <td>{{ sched.bags?.length || 0 }} bags</td>
                 <td>
@@ -206,6 +236,28 @@ function formatTime(isoStr: string) {
               </tr>
             </tbody>
           </table>
+        </div>
+
+        <!-- Pagination Controls -->
+        <div v-if="logisticsStore.schedulesTotalPages > 1" class="pagination-controls">
+          <button 
+            @click="logisticsStore.fetchSchedules(logisticsStore.schedulesPage - 1)" 
+            :disabled="logisticsStore.schedulesPage <= 1"
+            class="pagination-btn"
+          >
+            ◀ Prev
+          </button>
+          <span class="pagination-info">
+            Page {{ logisticsStore.schedulesPage }} of {{ logisticsStore.schedulesTotalPages }}
+            ({{ logisticsStore.schedulesTotal }} total)
+          </span>
+          <button 
+            @click="logisticsStore.fetchSchedules(logisticsStore.schedulesPage + 1)" 
+            :disabled="logisticsStore.schedulesPage >= logisticsStore.schedulesTotalPages"
+            class="pagination-btn"
+          >
+            Next ▶
+          </button>
         </div>
       </div>
 
@@ -273,6 +325,18 @@ function formatTime(isoStr: string) {
           <p v-if="!selectedSchedule.bags?.length" class="helper-text text-danger">
             At least one sealed bag must be loaded before authorization can be granted.
           </p>
+        </div>
+
+        <!-- Arrival action -->
+        <div v-if="selectedSchedule.status === 'departed'" class="dispatch-action-section">
+          <h4 class="section-title">Vehicle Arrival authorization</h4>
+          <button 
+            @click="handleArrive" 
+            class="arrive-authorization-btn"
+            :disabled="arriveSubmitting"
+          >
+            Authorize Route Arrival 🏁
+          </button>
         </div>
 
         <!-- Loaded Bags List -->
@@ -592,6 +656,29 @@ function formatTime(isoStr: string) {
   cursor: not-allowed;
 }
 
+.arrive-authorization-btn {
+  width: 100%;
+  padding: 0.875rem;
+  border-radius: var(--radius-sm);
+  background: var(--color-primary);
+  border: none;
+  color: white;
+  font-family: inherit;
+  font-size: 0.9375rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.arrive-authorization-btn:hover:not(:disabled) {
+  background: #4f46e5;
+}
+
+.arrive-authorization-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .helper-text {
   font-size: 0.75rem;
   margin-top: 4px;
@@ -796,5 +883,42 @@ function formatTime(isoStr: string) {
     opacity: 1;
     transform: translateX(0);
   }
+}
+
+.pagination-controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: var(--space-md);
+  padding-top: var(--space-md);
+  border-top: 1px solid var(--color-border);
+}
+
+.pagination-btn {
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-primary);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-primary);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.pagination-btn:hover:not(:disabled) {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+.pagination-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.pagination-info {
+  font-size: 0.8125rem;
+  color: var(--color-text-secondary);
+  font-weight: 500;
 }
 </style>

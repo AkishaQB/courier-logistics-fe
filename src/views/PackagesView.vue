@@ -214,6 +214,28 @@ function formatTime(isoStr: string) {
             </tbody>
           </table>
         </div>
+
+        <!-- Pagination Controls -->
+        <div v-if="logisticsStore.packagesTotalPages > 1" class="pagination-controls">
+          <button 
+            @click="logisticsStore.fetchPackages(logisticsStore.packagesPage - 1)" 
+            :disabled="logisticsStore.packagesPage <= 1"
+            class="pagination-btn"
+          >
+            ◀ Prev
+          </button>
+          <span class="pagination-info">
+            Page {{ logisticsStore.packagesPage }} of {{ logisticsStore.packagesTotalPages }}
+            ({{ logisticsStore.packagesTotal }} total)
+          </span>
+          <button 
+            @click="logisticsStore.fetchPackages(logisticsStore.packagesPage + 1)" 
+            :disabled="logisticsStore.packagesPage >= logisticsStore.packagesTotalPages"
+            class="pagination-btn"
+          >
+            Next ▶
+          </button>
+        </div>
       </div>
 
       <!-- Package Detail Panel -->
@@ -896,5 +918,42 @@ function formatTime(isoStr: string) {
     opacity: 1;
     transform: translateX(0);
   }
+}
+
+.pagination-controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: var(--space-md);
+  padding-top: var(--space-md);
+  border-top: 1px solid var(--color-border);
+}
+
+.pagination-btn {
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-primary);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-primary);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.pagination-btn:hover:not(:disabled) {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+.pagination-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.pagination-info {
+  font-size: 0.8125rem;
+  color: var(--color-text-secondary);
+  font-weight: 500;
 }
 </style>

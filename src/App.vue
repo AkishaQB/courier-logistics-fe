@@ -27,8 +27,13 @@ watch(
 )
 
 async function handleRegionChange() {
-  await logisticsStore.fetchDashboard()
-  await logisticsStore.fetchPackages()
+  await Promise.all([
+    logisticsStore.fetchDashboard(),
+    logisticsStore.fetchPackages(),
+    logisticsStore.fetchBags(),
+    logisticsStore.fetchTrucks(),
+    logisticsStore.fetchSchedules(),
+  ])
 }
 
 function handleLogout() {

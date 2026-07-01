@@ -207,6 +207,28 @@ async function handleSealBag() {
             </tbody>
           </table>
         </div>
+
+        <!-- Pagination Controls -->
+        <div v-if="logisticsStore.bagsTotalPages > 1" class="pagination-controls">
+          <button 
+            @click="logisticsStore.fetchBags(logisticsStore.bagsPage - 1)" 
+            :disabled="logisticsStore.bagsPage <= 1"
+            class="pagination-btn"
+          >
+            ◀ Prev
+          </button>
+          <span class="pagination-info">
+            Page {{ logisticsStore.bagsPage }} of {{ logisticsStore.bagsTotalPages }}
+            ({{ logisticsStore.bagsTotal }} total)
+          </span>
+          <button 
+            @click="logisticsStore.fetchBags(logisticsStore.bagsPage + 1)" 
+            :disabled="logisticsStore.bagsPage >= logisticsStore.bagsTotalPages"
+            class="pagination-btn"
+          >
+            Next ▶
+          </button>
+        </div>
       </div>
 
       <!-- Bag Consolidation Manager Panel -->
@@ -787,5 +809,42 @@ async function handleSealBag() {
     opacity: 1;
     transform: translateX(0);
   }
+}
+
+.pagination-controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: var(--space-md);
+  padding-top: var(--space-md);
+  border-top: 1px solid var(--color-border);
+}
+
+.pagination-btn {
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-primary);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-primary);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.pagination-btn:hover:not(:disabled) {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+.pagination-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.pagination-info {
+  font-size: 0.8125rem;
+  color: var(--color-text-secondary);
+  font-weight: 500;
 }
 </style>

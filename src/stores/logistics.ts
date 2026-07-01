@@ -48,7 +48,6 @@ export const useLogisticsStore = defineStore('logistics', () => {
     loading.value = true
     try {
       const { data } = await api.get<{ data: Region[] }>('/api/regions')
-      console.log('data', data)
       regions.value = data.data;
     } catch (err: any) {
       error.value = err.response?.data?.error || 'Failed to load regions'
@@ -73,12 +72,23 @@ export const useLogisticsStore = defineStore('logistics', () => {
 
   // ─── Packages ────────────────────────────────────────────
   const packages = ref<Package[]>([])
-  async function fetchPackages() {
+  const packagesPage = ref(1)
+  const packagesTotalPages = ref(1)
+  const packagesTotal = ref(0)
+  const packagesLimit = ref(10)
+
+  async function fetchPackages(page = 1, limit = 10) {
     loading.value = true
     try {
-      const regionParam = activeRegionId.value ? `?regionId=${activeRegionId.value}` : ''
-      const { data } = await api.get<{ data: Package[] }>(`/api/packages${regionParam}`)
+      let url = `/api/packages?page=${page}&limit=${limit}`
+      if (activeRegionId.value) {
+        url += `&regionId=${activeRegionId.value}`
+      }
+      const { data } = await api.get<{ data: Package[], meta: { total: number, page: number, limit: number, totalPages: number } }>(url)
       packages.value = data.data || []
+      packagesPage.value = data.meta?.page || 1
+      packagesTotalPages.value = data.meta?.totalPages || 1
+      packagesTotal.value = data.meta?.total || 0
     } catch (err: any) {
       error.value = err.response?.data?.error || 'Failed to load packages'
     } finally {
@@ -127,11 +137,23 @@ export const useLogisticsStore = defineStore('logistics', () => {
 
   // ─── Bags ────────────────────────────────────────────────
   const bags = ref<Bag[]>([])
-  async function fetchBags() {
+  const bagsPage = ref(1)
+  const bagsTotalPages = ref(1)
+  const bagsTotal = ref(0)
+  const bagsLimit = ref(10)
+
+  async function fetchBags(page = 1, limit = 10) {
     loading.value = true
     try {
-      const { data } = await api.get<Bag[]>('/api/bags')
-      bags.value = data
+      let url = `/api/bags?page=${page}&limit=${limit}`
+      if (activeRegionId.value) {
+        url += `&originRegionId=${activeRegionId.value}`
+      }
+      const { data } = await api.get<{ bags: Bag[], total: number, page: number, limit: number, totalPages: number }>(url)
+      bags.value = data.bags ?? []
+      bagsPage.value = data.page || 1
+      bagsTotalPages.value = data.totalPages || 1
+      bagsTotal.value = data.total || 0
     } catch (err: any) {
       error.value = err.response?.data?.error || 'Failed to load bags'
     } finally {
@@ -196,11 +218,23 @@ export const useLogisticsStore = defineStore('logistics', () => {
 
   // ─── Trucks ──────────────────────────────────────────────
   const trucks = ref<Truck[]>([])
-  async function fetchTrucks() {
+  const trucksPage = ref(1)
+  const trucksTotalPages = ref(1)
+  const trucksTotal = ref(0)
+  const trucksLimit = ref(10)
+
+  async function fetchTrucks(page = 1, limit = 10) {
     loading.value = true
     try {
-      const { data } = await api.get<Truck[]>('/api/trucks')
-      trucks.value = data
+      let url = `/api/trucks?page=${page}&limit=${limit}`
+      if (activeRegionId.value) {
+        url += `&regionId=${activeRegionId.value}`
+      }
+      const { data } = await api.get<{ data: Truck[], meta: { total: number, page: number, limit: number, totalPages: number } }>(url)
+      trucks.value = data.data ?? []
+      trucksPage.value = data.meta?.page || 1
+      trucksTotalPages.value = data.meta?.totalPages || 1
+      trucksTotal.value = data.meta?.total || 0
     } catch (err: any) {
       error.value = err.response?.data?.error || 'Failed to load trucks'
     } finally {
@@ -222,13 +256,48 @@ export const useLogisticsStore = defineStore('logistics', () => {
     }
   }
 
-  // ─── Schedules ───────────────────────────────────────────
-  const schedules = ref<TruckSchedule[]>([])
-  async function fetchSchedules() {
+  async function updateTruck(truckId: string, payload: { status?: string; currentRegionId?: string; delayReason?: string }) {
     loading.value = true
     try {
-      const { data } = await api.get<TruckSchedule[]>('/api/truck-schedules')
-      schedules.value = data
+      const { data } = await api.patch<Truck>(`/api/trucks/${truckId}`, payload)
+      await fetchTrucks()
+      return data
+    } catch (err: any) {
+      error.value = err.response?.data?.error || 'Failed to update truck'
+      throw err
+    } finally {
+      loading.value = false
+    }
+  }
+
+  // ─── Schedules ───────────────────────────────────────────
+  const schedules = ref<TruckSchedule[]>([])
+  const schedulesPage = ref(1)
+  const schedulesTotalPages = ref(1)
+  const schedulesTotal = ref(0)
+  const schedulesLimit = ref(10)
+
+  async function fetchSchedules(page = 1, limit = 10) {
+    loading.value = true
+    try {
+      let url = `/api/truck-schedules?page=${page}&limit=${limit}`
+      if (activeRegionId.value) {
+        url += `&regionId=${activeRegionId.value}`
+      }
+      const { data } = await api.get<{ data: any[], meta: { total: number, page: number, limit: number, totalPages: number } }>(url)
+      schedules.value = (data.data ?? []).map((s: any) => {
+        const bags = s.truckBags?.map((tb: any) => ({
+          ...tb.bag,
+          packages: tb.bag.bagPackages?.map((bp: any) => bp.package) || tb.bag.packages || []
+        })) || []
+        return {
+          ...s,
+          bags
+        }
+      })
+      schedulesPage.value = data.meta?.page || 1
+      schedulesTotalPages.value = data.meta?.totalPages || 1
+      schedulesTotal.value = data.meta?.total || 0
     } catch (err: any) {
       error.value = err.response?.data?.error || 'Failed to load schedules'
     } finally {
@@ -284,6 +353,23 @@ export const useLogisticsStore = defineStore('logistics', () => {
     }
   }
 
+  async function updateSchedule(
+    scheduleId: string,
+    payload: { status?: string; delayReason?: string; actualDeparture?: string }
+  ) {
+    loading.value = true
+    try {
+      const { data } = await api.patch(`/api/truck-schedules/${scheduleId}`, payload)
+      await fetchSchedules()
+      return data
+    } catch (err: any) {
+      error.value = err.response?.data?.error || 'Failed to update truck schedule'
+      throw err
+    } finally {
+      loading.value = false
+    }
+  }
+
   return {
     loading,
     error,
@@ -298,23 +384,41 @@ export const useLogisticsStore = defineStore('logistics', () => {
     fetchRegions,
     createRegion,
     packages,
+    packagesPage,
+    packagesTotalPages,
+    packagesTotal,
+    packagesLimit,
     fetchPackages,
     registerPackage,
     updatePackageStatus,
     getPackageHistory,
     bags,
+    bagsPage,
+    bagsTotalPages,
+    bagsTotal,
+    bagsLimit,
     fetchBags,
     createBag,
     addPackageToBag,
     removePackageFromBag,
     sealBag,
     trucks,
+    trucksPage,
+    trucksTotalPages,
+    trucksTotal,
+    trucksLimit,
     fetchTrucks,
     createTruck,
+    updateTruck,
     schedules,
+    schedulesPage,
+    schedulesTotalPages,
+    schedulesTotal,
+    schedulesLimit,
     fetchSchedules,
     createSchedule,
     addBagToSchedule,
     departSchedule,
+    updateSchedule,
   }
 })

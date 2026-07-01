@@ -68,6 +68,7 @@ export interface Truck {
   truckCode: string
   capacity: number
   currentRegionId: string
+  status: 'idle' | 'loading' | 'in_transit'
   currentRegion?: Region
   createdAt: string
 }
@@ -76,9 +77,9 @@ export interface TruckSchedule {
   id: string
   truckId: string
   routeDescription: string
-  departureTime: string
+  scheduledDeparture: string
   estimatedArrivalTime: string
-  status: 'scheduled' | 'in_transit' | 'arrived' | 'cancelled'
+  status: 'scheduled' | 'departed' | 'delayed' | 'cancelled' | 'arrived'
   truck?: Truck
   bags?: Bag[]
   createdAt: string

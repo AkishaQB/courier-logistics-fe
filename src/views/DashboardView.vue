@@ -72,7 +72,7 @@ function formatTime(isoStr: string) {
         <div class="stat-card__icon text-accent">📥</div>
         <div class="stat-card__content">
           <span class="stat-card__label">New Arrivals</span>
-          <h2 class="stat-card__value">{{ logisticsStore.dashboardData?.summary?.packages?.byStatus?.to_be_picked_up || 0 + logisticsStore.dashboardData?.summary?.packages?.byStatus?.picked_up || 0 }}</h2>
+          <h2 class="stat-card__value">{{ (logisticsStore.dashboardData?.summary?.packages?.byStatus?.to_be_picked_up ?? 0) + (logisticsStore.dashboardData?.summary?.packages?.byStatus?.picked_up ?? 0) }}</h2>
           <p class="stat-card__desc">Awaiting bagging & sorting</p>
         </div>
       </div>
@@ -98,7 +98,7 @@ function formatTime(isoStr: string) {
         <div class="stat-card__icon text-success">🚚</div>
         <div class="stat-card__content">
           <span class="stat-card__label">Loaded / In Transit</span>
-          <h2 class="stat-card__value">{{ logisticsStore.dashboardData?.summary?.packages?.byStatus?.in_transit || 0 + logisticsStore.dashboardData?.summary?.packages?.byStatus?.added_to_bag || 0 }}</h2>
+          <h2 class="stat-card__value">{{ (logisticsStore.dashboardData?.summary?.packages?.byStatus?.in_transit ?? 0) + (logisticsStore.dashboardData?.summary?.packages?.byStatus?.added_to_bag ?? 0) }}</h2>
           <p class="stat-card__desc">Bagged and loaded on trucks</p>
         </div>
       </div>

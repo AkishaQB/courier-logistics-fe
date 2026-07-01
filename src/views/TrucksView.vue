@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted, ref, watch } from 'vue'
 import { useLogisticsStore } from '@/stores/logistics'
 
 const logisticsStore = useLogisticsStore()
@@ -15,12 +15,29 @@ const createError = ref<string | null>(null)
 const createSuccess = ref<string | null>(null)
 const createSubmitting = ref(false)
 
+// Manage truck state
+const selectedTruck = ref<any | null>(null)
+const updateTruckStatus = ref('idle')
+const updateTruckRegionId = ref('')
+const updateSubmitting = ref(false)
+const updateError = ref<string | null>(null)
+const updateSuccess = ref<string | null>(null)
+
 onMounted(async () => {
   await Promise.all([
     logisticsStore.fetchRegions(),
     logisticsStore.fetchTrucks()
   ])
 })
+
+// Refetch trucks when active hub changes
+watch(
+  () => logisticsStore.activeRegionId,
+  async () => {
+    selectedTruck.value = null
+    await logisticsStore.fetchTrucks()
+  }
+)
 
 async function handleCreateTruck() {
   createError.value = null
@@ -53,6 +70,46 @@ async function handleCreateTruck() {
     createSubmitting.value = false
   }
 }
+
+function selectTruck(truck: any) {
+  selectedTruck.value = truck
+  updateTruckStatus.value = truck.status
+  updateTruckRegionId.value = truck.currentRegionId || ''
+  updateError.value = null
+  updateSuccess.value = null
+}
+
+async function handleUpdateTruck() {
+  if (!selectedTruck.value) return
+  updateError.value = null
+  updateSuccess.value = null
+  updateSubmitting.value = true
+
+  try {
+    await logisticsStore.updateTruck(selectedTruck.value.id, {
+      status: updateTruckStatus.value,
+      currentRegionId: updateTruckRegionId.value
+    })
+    updateSuccess.value = 'Truck state updated successfully!'
+    
+    // Refresh selected truck details
+    const refreshed = logisticsStore.trucks.find(t => t.id === selectedTruck.value.id)
+    if (refreshed) selectedTruck.value = refreshed
+  } catch (err: any) {
+    updateError.value = err.response?.data?.error || 'Failed to update truck state'
+  } finally {
+    updateSubmitting.value = false
+  }
+}
+
+function getStatusBadgeClass(status: string) {
+  switch (status) {
+    case 'idle': return 'badge badge--success'
+    case 'loading': return 'badge badge--warning'
+    case 'in_transit': return 'badge badge--info'
+    default: return 'badge badge--danger'
+  }
+}
 </script>
 
 <template>
@@ -67,42 +124,144 @@ async function handleCreateTruck() {
       </button>
     </div>
 
-    <!-- Main Card container -->
-    <div class="card">
-      <h3 class="card-title">Registered Fleet Registry</h3>
-      <p class="card-subtitle">Active linehaul vehicles and their current staging hubs</p>
+    <!-- Main Grid layout -->
+    <div class="ops-grid">
+      <!-- Registry List -->
+      <div class="card" :class="{ 'col-2': !selectedTruck }">
+        <h3 class="card-title">Registered Fleet Registry</h3>
+        <p class="card-subtitle">Active linehaul vehicles and their current staging hubs</p>
 
-      <div v-if="logisticsStore.loading && !logisticsStore.trucks.length" class="empty-state">
-        Loading fleet registry...
+        <div v-if="logisticsStore.loading && !logisticsStore.trucks.length" class="empty-state">
+          Loading fleet registry...
+        </div>
+        <div v-else-if="logisticsStore.trucks.length === 0" class="empty-state">
+          No staging trucks registered in the database.
+        </div>
+        <div v-else class="table-wrapper">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Truck Code</th>
+                <th>Maximum Capacity</th>
+                <th>Current Status</th>
+                <th>Current staging Hub</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr 
+                v-for="truck in logisticsStore.trucks" 
+                :key="truck.id"
+                :class="{ 'active-row': selectedTruck?.id === truck.id }"
+                @click="selectTruck(truck)"
+                class="clickable-row"
+              >
+                <td class="font-mono text-accent font-semibold">🚛 {{ truck.truckCode }}</td>
+                <td>{{ truck.capacity }} kg</td>
+                <td>
+                  <span class="badge" :class="getStatusBadgeClass(truck.status)">
+                    {{ truck.status }}
+                  </span>
+                </td>
+                <td>
+                  <span class="hub-location">
+                    📍 {{ truck.currentRegion?.regionName || 'Outside network' }} ({{ truck.currentRegion?.regionCode || '??' }})
+                  </span>
+                </td>
+                <td>
+                  <button class="manage-row-btn">Manage</button>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Pagination Controls -->
+        <div v-if="logisticsStore.trucksTotalPages > 1" class="pagination-controls">
+          <button 
+            @click="logisticsStore.fetchTrucks(logisticsStore.trucksPage - 1)" 
+            :disabled="logisticsStore.trucksPage <= 1"
+            class="pagination-btn"
+          >
+            ◀ Prev
+          </button>
+          <span class="pagination-info">
+            Page {{ logisticsStore.trucksPage }} of {{ logisticsStore.trucksTotalPages }}
+            ({{ logisticsStore.trucksTotal }} total)
+          </span>
+          <button 
+            @click="logisticsStore.fetchTrucks(logisticsStore.trucksPage + 1)" 
+            :disabled="logisticsStore.trucksPage >= logisticsStore.trucksTotalPages"
+            class="pagination-btn"
+          >
+            Next ▶
+          </button>
+        </div>
       </div>
-      <div v-else-if="logisticsStore.trucks.length === 0" class="empty-state">
-        No staging trucks registered in the database.
-      </div>
-      <div v-else class="table-wrapper">
-        <table class="data-table">
-          <thead>
-            <tr>
-              <th>Truck Code</th>
-              <th>Maximum Capacity</th>
-              <th>Current staging Hub</th>
-              <th>Registration Date</th>
-              <th>Vehicle ID</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr v-for="truck in logisticsStore.trucks" :key="truck.id">
-              <td class="font-mono text-accent font-semibold">🚛 {{ truck.truckCode }}</td>
-              <td>{{ truck.capacity }} kg</td>
-              <td>
-                <span class="hub-location">
-                  📍 {{ truck.currentRegion?.regionName || 'Outside network' }} ({{ truck.currentRegion?.regionCode || '??' }})
-                </span>
-              </td>
-              <td>{{ new Date(truck.createdAt).toLocaleDateString() }}</td>
-              <td class="font-mono text-muted text-xs">{{ truck.id }}</td>
-            </tr>
-          </tbody>
-        </table>
+
+      <!-- Selected Truck Panel -->
+      <div v-if="selectedTruck" class="card package-details-panel animate-slide-in">
+        <div class="panel-header">
+          <h3 class="card-title">Manage Truck</h3>
+          <button @click="selectedTruck = null" class="close-btn">✕ Close</button>
+        </div>
+
+        <div class="package-meta-info">
+          <div class="meta-item">
+            <span class="meta-label">Truck Code</span>
+            <span class="meta-value font-mono text-accent">{{ selectedTruck.truckCode }}</span>
+          </div>
+          <div class="meta-item">
+            <span class="meta-label">Maximum Capacity</span>
+            <span class="meta-value">{{ selectedTruck.capacity }} kg</span>
+          </div>
+          <div class="meta-item">
+            <span class="meta-label">Current Status</span>
+            <span class="badge" :class="getStatusBadgeClass(selectedTruck.status)">
+              {{ selectedTruck.status }}
+            </span>
+          </div>
+          <div class="meta-item">
+            <span class="meta-label">Staging Hub</span>
+            <span class="meta-value">{{ selectedTruck.currentRegion?.regionName || 'Outside' }}</span>
+          </div>
+        </div>
+
+        <!-- Status update form -->
+        <div class="status-update-section">
+          <h4 class="section-title">Update Status / Assignment</h4>
+          <form @submit.prevent="handleUpdateTruck" class="update-form">
+            <div class="form-group">
+              <label for="updateTruckStatus" class="form-label">Vehicle Status</label>
+              <select id="updateTruckStatus" v-model="updateTruckStatus" class="form-select">
+                <option value="idle">Idle / Ready</option>
+                <option value="loading">Loading Staging Cargo</option>
+                <option value="in_transit">In Transit / Dispatch</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label for="updateTruckRegion" class="form-label">Relocate / Assign to Hub</label>
+              <select id="updateTruckRegion" v-model="updateTruckRegionId" class="form-select">
+                <option
+                  v-for="reg in logisticsStore.regions"
+                  :key="reg.id"
+                  :value="reg.id"
+                >
+                  {{ reg.regionCode }} - {{ reg.regionName }}
+                </option>
+              </select>
+            </div>
+
+            <div v-if="updateError" class="alert alert--danger">{{ updateError }}</div>
+            <div v-if="updateSuccess" class="alert alert--success">{{ updateSuccess }}</div>
+
+            <button type="submit" class="submit-btn" :disabled="updateSubmitting">
+              <span v-if="updateSubmitting" class="spinner"></span>
+              <span v-else>Update Truck State</span>
+            </button>
+          </form>
+        </div>
       </div>
     </div>
 
@@ -193,6 +352,17 @@ async function handleCreateTruck() {
   background: #2563eb;
 }
 
+.ops-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-lg);
+  align-items: start;
+}
+
+.col-2 {
+  grid-column: span 2;
+}
+
 .card {
   background: var(--color-bg-card);
   border: 1px solid var(--color-border);
@@ -212,6 +382,151 @@ async function handleCreateTruck() {
   color: var(--color-text-secondary);
   font-size: 0.8125rem;
   margin-bottom: var(--space-md);
+}
+
+.clickable-row {
+  cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.clickable-row:hover {
+  background: var(--color-bg-card-hover);
+}
+
+.active-row td {
+  background: var(--color-accent-soft);
+  border-color: var(--color-accent);
+}
+
+.manage-row-btn {
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-primary);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-primary);
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+
+.manage-row-btn:hover {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+/* Detail Panel */
+.panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: var(--space-md);
+}
+
+.close-btn {
+  padding: 4px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-primary);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  font-size: 0.75rem;
+}
+
+.package-meta-info {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--space-md);
+  padding: var(--space-md);
+  background: var(--color-bg-primary);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border);
+  margin-bottom: var(--space-lg);
+}
+
+.meta-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.meta-label {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+.meta-value {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--color-text-primary);
+}
+
+.section-title {
+  font-size: 0.9375rem;
+  font-weight: 700;
+  margin-bottom: var(--space-sm);
+  border-bottom: 1px solid var(--color-border);
+  padding-bottom: 4px;
+}
+
+.status-update-section {
+  margin-bottom: var(--space-lg);
+}
+
+.update-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.form-label {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--color-text-secondary);
+}
+
+.form-input,
+.form-select {
+  width: 100%;
+  padding: 0.625rem 0.875rem;
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-primary);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-primary);
+  font-family: inherit;
+  font-size: 0.875rem;
+}
+
+.submit-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 0.75rem;
+  border-radius: var(--radius-sm);
+  background: var(--color-accent);
+  border: none;
+  color: white;
+  font-family: inherit;
+  font-size: 0.875rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.submit-btn:hover:not(:disabled) {
+  background: #2563eb;
+}
+
+.submit-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
 }
 
 /* Modals */
@@ -248,44 +563,10 @@ async function handleCreateTruck() {
   padding-bottom: var(--space-xs);
 }
 
-.close-btn {
-  padding: 4px 10px;
-  border-radius: var(--radius-sm);
-  background: var(--color-bg-primary);
-  border: 1px solid var(--color-border);
-  color: var(--color-text-secondary);
-  cursor: pointer;
-  font-size: 0.75rem;
-}
-
 .modal-form {
   display: flex;
   flex-direction: column;
   gap: var(--space-md);
-}
-
-.form-group {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-xs);
-}
-
-.form-label {
-  font-size: 0.8125rem;
-  font-weight: 600;
-  color: var(--color-text-secondary);
-}
-
-.form-input,
-.form-select {
-  width: 100%;
-  padding: 0.625rem 0.875rem;
-  border-radius: var(--radius-sm);
-  background: var(--color-bg-primary);
-  border: 1px solid var(--color-border);
-  color: var(--color-text-primary);
-  font-family: inherit;
-  font-size: 0.875rem;
 }
 
 .modal-footer {
@@ -312,30 +593,6 @@ async function handleCreateTruck() {
 .cancel-btn:hover {
   color: var(--color-text-primary);
   border-color: var(--color-text-muted);
-}
-
-.submit-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0.625rem 1.25rem;
-  border-radius: var(--radius-sm);
-  background: var(--color-accent);
-  border: none;
-  color: white;
-  font-family: inherit;
-  font-size: 0.875rem;
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.submit-btn:hover:not(:disabled) {
-  background: #2563eb;
-}
-
-.submit-btn:disabled {
-  opacity: 0.6;
-  cursor: not-allowed;
 }
 
 .table-wrapper {
@@ -408,5 +665,57 @@ async function handleCreateTruck() {
 
 @keyframes spin {
   to { transform: rotate(360deg); }
+}
+
+.animate-slide-in {
+  animation: slide-in 0.3s ease-out;
+}
+
+@keyframes slide-in {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.pagination-controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: var(--space-md);
+  padding-top: var(--space-md);
+  border-top: 1px solid var(--color-border);
+}
+
+.pagination-btn {
+  padding: 6px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--color-bg-primary);
+  border: 1px solid var(--color-border);
+  color: var(--color-text-primary);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.pagination-btn:hover:not(:disabled) {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+.pagination-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.pagination-info {
+  font-size: 0.8125rem;
+  color: var(--color-text-secondary);
+  font-weight: 500;
 }
 </style>
