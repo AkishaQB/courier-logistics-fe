@@ -19,7 +19,7 @@ export default defineConfig({
     port: 5175, // run on a distinct port (e.g. 5175) to avoid conflict with collection FE (5173)
     proxy: {
       '/api/auth': {
-        target: 'http://localhost:3000',
+        target: 'http://localhost:3001',
         changeOrigin: true,
       },
       '/api': {
